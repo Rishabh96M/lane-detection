@@ -74,4 +74,4 @@ if __name__ == '__main__':
         ycrcb = cv2.merge(channels)
         img = cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR)
         cv2.imshow('adaptive histogram equalisation', img)
-        cv2.waitKey(5)
+        cv2.waitKey(1)
