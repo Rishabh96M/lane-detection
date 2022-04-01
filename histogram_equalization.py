@@ -12,12 +12,21 @@ import os
 
 
 def histEqual(frame):
+    """
+    Definition
+    ---
+    Method to perform histogram equalisation on a 2D intensity array
+
+    Parameters
+    ---
+    frame : 2D array
+
+    Returns
+    ---
+    frame : 2D array after equalisation
+    """
     hist = np.zeros(256)
-    for row in frame:
-        for pix in row:
-            hist[pix] = hist[pix] + 1
-    # for i in range(1, 256):
-    #     hist[i] = hist[i] + hist[i - 1]
+    hist, bins = np.histogram(frame.flatten(), 256, [0, 255])
     hist = hist.cumsum()
     hist = hist / hist[-1]
     for x in range(frame.shape[0]):
@@ -26,19 +35,25 @@ def histEqual(frame):
     return frame
 
 
-def adaptiveHistEqual(frame):
+def adaptiveHistEqual(frame, k=30):
+    """
+    Definition
+    ---
+    Method to perform adaptive histogram equalisation on a 2D intensity array
+
+    Parameters
+    ---
+    frame : 2D array
+    k : tile size (default = 30)
+
+    Returns
+    ---
+    frame : 2D array after equalisation
+    """
     img_mod = np.zeros_like(frame)
-    for i in range(frame.shape[0] - 30):
-        for j in range(frame.shape[1] - 30):
-            kernel = frame[i:i+30, j:j+30]
-            for x in range(0, 30):
-                for y in range(0, 30):
-                    rank = 0
-                    for m in range(0, 30):
-                        for n in range(0, 30):
-                            if(kernel[x, y] > kernel[m, n]):
-                                rank = rank + 1
-                    img_mod[i, j] = ((rank * 255)/900)
+    for i in range(0, frame.shape[0] - k, k):
+        for j in range(0, frame.shape[1] - k, k):
+            img_mod[i:i+k, j:j+k] = histEqual(frame[i:i+k, j:j+k])
     return img_mod
 
 
@@ -55,4 +70,8 @@ if __name__ == '__main__':
         ycrcb = cv2.merge(channels)
         img = cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR)
         cv2.imshow('output', img)
-        cv2.waitKey(0)
+        channels[0] = adaptiveHistEqual(channels[0])
+        ycrcb = cv2.merge(channels)
+        img = cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR)
+        cv2.imshow('output1', img)
+        cv2.waitKey(5)
