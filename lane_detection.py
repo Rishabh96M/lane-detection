@@ -14,7 +14,7 @@ def removeBackNoise(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     mask = np.zeros_like(gray)
-    region = np.array([[(0, h), (w // 2, 4 * h // 7), (w, h)]])
+    region = np.array([[(0, h), (w//2, 4*h//7), (w, h)]])
     mask = cv2.fillPoly(mask, region, 1)
     cv2.imshow('mask', gray * mask)
     _, thresh = cv2.threshold(gray * mask, 200, 255, cv2.THRESH_BINARY)
