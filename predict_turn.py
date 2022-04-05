@@ -18,13 +18,14 @@ def removeBackNoise(img):
     mask_white = cv2.inRange(hsv, white_range[0], white_range[1])
 
     mask_wy = cv2.bitwise_or(mask_yellow, mask_white)
-    return mask_wy
+    _, thresh = cv2.threshold(mask_wy, 200, 255, cv2.THRESH_BINARY)
+    return thresh
 
 
 def warp(image):
-    h, w = image.shape
-    src = np.float32([[120, h-70], [w-120, h-70],
-                     [4*w//7, 3*h//5], [3*w//7, 3*h//5]])
+    dim = image.shape
+    src = np.float32([[120, dim[0]-70], [dim[1]-120, dim[0]-70],
+                     [4*dim[1]//7, 3*dim[0]//5], [3*dim[1]//7, 3*dim[0]//5]])
     dst = np.float32([[0, 1000], [1000, 1000], [1000, 0], [0, 0]])
 
     H = cv2.getPerspectiveTransform(src, dst)
@@ -42,35 +43,107 @@ def checkForLine(seg, thresh=50):
         return -1
 
 
-def detectLines(image, windows=10):
-    hist = np.sum(image[image.shape[0]//4:, :], 0)
-    leftx_pts = np.argmax(hist[:len(hist)//2])
-    rightx_pts = np.argmax(hist[len(hist)//2:]) + len(hist)//2
-    lefty_pts = image.shape[0] - 5
-    righty_pts = image.shape[0] - 5
-    out_img = np.dstack((image, image, image)) * 255
+def detectLanes(image, windows=10, margin=100, thresh=50):
+    histogram = np.sum(image[image.shape[0] // 3:, :], axis=0)
+    output = np.dstack((image, image, image)) * 255
 
-    window_size = image.shape[0] // windows
-    margin = 100
+    leftx_base = np.argmax(histogram[:histogram.shape[0] // 2])
+    rightx_base = np.argmax(
+        histogram[histogram.shape[0] // 2:]) + histogram.shape[0] // 2
 
-    leftx_current = leftx_pts
-    rightx_current = rightx_pts
+    window_height = np.int(image.shape[0] // windows)
+
+    val_present = image.nonzero()
+    val_present_y = np.array(val_present[0])
+    val_present_x = np.array(val_present[1])
+
+    leftx_current = leftx_base
+    rightx_current = rightx_base
+
+    left_lane_inds = []
+    right_lane_inds = []
 
     for window in range(windows):
-        win_y_low = image.shape[0] - (window + 1) * window_size
-        win_y_high = image.shape[0] - window * window_size
-        win_xleft_low = leftx_current - margin
-        win_xleft_high = leftx_current + margin
-        win_xright_low = rightx_current - margin
-        win_xright_high = rightx_current + margin
+        win_yb = image.shape[0] - (window + 1) * window_height
+        win_yt = image.shape[0] - window * window_height
+        win_xll = leftx_current - margin
+        win_xlr = leftx_current + margin
+        win_xrl = rightx_current - margin
+        win_xrr = rightx_current + margin
 
-        # Draw the windows on the visualization image
-        cv2.rectangle(out_img, (win_xleft_low, win_y_low),
-                      (win_xleft_high, win_y_high), (0, 255, 0), 4)
-        cv2.rectangle(out_img, (win_xright_low, win_y_low),
-                      (win_xright_high, win_y_high), (0, 255, 0), 4)
-    cv2.imshow('out', out_img)
-    return leftx_pts, lefty_pts, rightx_pts, righty_pts
+        val_left = ((val_present_y >= win_yb) & (val_present_y < win_yt) & (
+            val_present_x >= win_xll) & (val_present_x
+                                         < win_xlr)).nonzero()[0]
+        val_right = ((val_present_y >= win_yb) & (val_present_y < win_yt) & (
+            val_present_x >= win_xrl) & (val_present_x
+                                         < win_xrr)).nonzero()[0]
+
+        left_lane_inds.append(val_left)
+        right_lane_inds.append(val_right)
+
+        if len(val_left) > thresh:
+            leftx_current = np.int(np.mean(val_present_x[val_left]))
+        if len(val_right) > thresh:
+            rightx_current = np.int(np.mean(val_present_x[val_right]))
+
+        cv2.rectangle(output, (win_xll, win_yb),
+                      (win_xlr, win_yt), (0, 255, 0), 4)
+        cv2.rectangle(output, (win_xrl, win_yb),
+                      (win_xrr, win_yt), (0, 255, 0), 4)
+
+    left_lane_inds = np.concatenate(left_lane_inds)
+    right_lane_inds = np.concatenate(right_lane_inds)
+
+    leftx = val_present_x[left_lane_inds]
+    lefty = val_present_y[left_lane_inds]
+    rightx = val_present_x[right_lane_inds]
+    righty = val_present_y[right_lane_inds]
+
+    return leftx, lefty, rightx, righty, output
+
+
+def curveFitting(img_shape, leftx, lefty, rightx, righty):
+    left_fit = np.polyfit(lefty, leftx, 2)
+    right_fit = np.polyfit(righty, rightx, 2)
+
+    ploty = np.linspace(0, img_shape[0] - 1, img_shape[0])
+
+    left_x = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+    right_x = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+
+    left = np.array(np.vstack([left_x, ploty]).astype(np.int32).T)
+    right = np.array(np.vstack([right_x, ploty]).astype(np.int32).T)
+
+    y_max = np.max(ploty)
+    l_rad_curv = ((1 + (2*left_fit[0]*y_max + left_fit[1])
+                  ** 2)**1.5) / np.absolute(2*left_fit[0])
+    r_rad_curv = ((1 + (2*right_fit[0]*y_max + right_fit[1])
+                  ** 2)**1.5) / np.absolute(2*right_fit[0])
+
+    return l_rad_curv, r_rad_curv, left, right
+
+
+def colorLane(frame, left, right):
+    input = frame.copy()
+    warped, invH = warp(frame)
+    cv2.polylines(warped, [left], False, [0, 0, 255], 5)
+    cv2.polylines(warped, [right], False, [0, 0, 255], 5)
+    points = np.append(left, np.flipud(right), 0)
+    cv2.fillPoly(warped, np.int32([points]), (255, 0, 0))
+    output = cv2.warpPerspective(
+        warped, invH, (frame.shape[1], frame.shape[0]), frame)
+    out = cv2.addWeighted(output, 0.8, input, 0.6, 1)
+    return out
+
+
+def pred_turn(l_rad_curv, r_rad_curv):
+    turn = "STRAIGHT"
+    rad_diff = l_rad_curv - r_rad_curv
+    if(rad_diff > 800):
+        turn = "RIGHT"
+    if(rad_diff < -800):
+        turn = "LEFT"
+    return turn
 
 
 if __name__ == '__main__':
@@ -78,6 +151,7 @@ if __name__ == '__main__':
     while cap.isOpened():
         ret, frame = cap.read()
         if ret:
+            input = frame.copy()
             cv2.imshow('input', frame)
 
             bin = removeBackNoise(frame)
@@ -86,10 +160,22 @@ if __name__ == '__main__':
             warped, invH = warp(bin)
             cv2.imshow('warped', warped)
 
-            detectLines(warped)
+            leftx, lefty, rightx, righty, lanes_img = detectLanes(warped)
+            cv2.imshow('lanes', lanes_img)
 
-            cv2.imshow('output', frame)
-            if cv2.waitKey(0) & 0xFF == ord('q'):
+            l_rad_curv, r_rad_curv, left_lane, right_lane = curveFitting(
+                warped.shape, leftx, lefty, rightx, righty)
+
+            turn = pred_turn(l_rad_curv, r_rad_curv)
+
+            print('ACTION = ', turn)
+            print('radius of curvature in pixels = ', (
+                l_rad_curv + r_rad_curv)/2)
+            print('\n')
+            output = colorLane(frame, left_lane, right_lane)
+            cv2.imshow('output', output)
+
+            if cv2.waitKey(50) & 0xFF == ord('q'):
                 break
 
         else:
