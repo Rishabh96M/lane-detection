@@ -35,7 +35,7 @@ def histEqual(frame):
     return frame
 
 
-def adaptiveHistEqual(frame, k=30):
+def adaptiveHistEqual(frame, t_no=7):
     """
     Definition
     ---
@@ -44,16 +44,17 @@ def adaptiveHistEqual(frame, k=30):
     Parameters
     ---
     frame : 2D array
-    k : tile size (default = 30)
+    t : number of tiles per axis (default = 7)
 
     Returns
     ---
     frame : 2D array after equalisation
     """
     img_mod = np.zeros_like(frame)
-    for i in range(0, frame.shape[0] - k, k):
-        for j in range(0, frame.shape[1] - k, k):
-            img_mod[i:i+k, j:j+k] = histEqual(frame[i:i+k, j:j+k])
+    k = (frame.shape[0]//t_no, frame.shape[1]//t_no)
+    for i in range(0, frame.shape[0] - k[0], k[0]):
+        for j in range(0, frame.shape[1] - k[1], k[1]):
+            img_mod[i:i+k[0], j:j+k[1]] = histEqual(frame[i:i+k[0], j:j+k[1]])
     return img_mod
 
 
@@ -74,4 +75,4 @@ if __name__ == '__main__':
         ycrcb = cv2.merge(channels)
         img = cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR)
         cv2.imshow('adaptive histogram equalisation', img)
-        cv2.waitKey(1)
+        cv2.waitKey(10)
