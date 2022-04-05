@@ -146,34 +146,66 @@ def pred_turn(l_rad_curv, r_rad_curv):
     return turn
 
 
+def disp_output(turn, output, bin, warped, input, lanes_img, rad):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 1
+    fontColor = (255, 255, 255)
+    thickness = 1
+    lineType = 2
+
+    cv2.putText(output, 'ACTION = ' + turn,
+                (0, 50),
+                font,
+                fontScale,
+                fontColor,
+                thickness,
+                lineType)
+
+    cv2.putText(output, 'radius of curvature in pixels = '
+                + str(rad),
+                (0, 100),
+                font,
+                fontScale,
+                fontColor,
+                thickness,
+                lineType)
+
+    test = cv2.merge((warped, warped, warped))
+    btm = cv2.resize(np.concatenate((test, lanes_img),
+                     1), (750, 3*output.shape[0]//4))
+
+    test2 = cv2.merge((bin, bin, bin))
+    top = cv2.resize(np.concatenate((input, test2), 1),
+                     (750, output.shape[0]//4))
+
+    right = np.concatenate((top, btm), 0)
+
+    return np.concatenate((output, right), 1)
+
+
 if __name__ == '__main__':
     cap = cv2.VideoCapture('res/predict_turn.mp4')
     while cap.isOpened():
         ret, frame = cap.read()
         if ret:
             input = frame.copy()
-            cv2.imshow('input', frame)
 
             bin = removeBackNoise(frame)
-            cv2.imshow('bin', bin)
-
             warped, invH = warp(bin)
-            cv2.imshow('warped', warped)
 
             leftx, lefty, rightx, righty, lanes_img = detectLanes(warped)
-            cv2.imshow('lanes', lanes_img)
 
             l_rad_curv, r_rad_curv, left_lane, right_lane = curveFitting(
                 warped.shape, leftx, lefty, rightx, righty)
 
             turn = pred_turn(l_rad_curv, r_rad_curv)
 
-            print('ACTION = ', turn)
-            print('radius of curvature in pixels = ', (
-                l_rad_curv + r_rad_curv)/2)
-            print('\n')
             output = colorLane(frame, left_lane, right_lane)
-            cv2.imshow('output', output)
+
+            concat = disp_output(turn, output, bin, warped,
+                                 input, lanes_img, (l_rad_curv + r_rad_curv)/2)
+
+            cv2.imshow('output', concat)
 
             if cv2.waitKey(50) & 0xFF == ord('q'):
                 break
